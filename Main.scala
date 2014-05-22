@@ -44,6 +44,11 @@ trait Command {
 
 object Command {
   def Home = new HomeCommand
+  def Move(x:Double,y:Double,z:Double) = new Move(x,y,z)
+  def EStop = new EStop
+  def apply(cmd:String) = new Command {
+    override def toGCode = cmd
+  }
 }
 
 class HomeCommand extends Command{
@@ -52,6 +57,12 @@ class HomeCommand extends Command{
 
 case class Move(p:Map[Char,Double],t:String) extends Command{
   def this(p:Map[Char,Double]) = this(p, "G1")
+  def this(x:Double, y:Double, z:Double, t:String) = this(Map(
+    'x' -> x,
+    'y' -> y,
+    'z' -> z
+  ), t)
+  def this(x:Double, y:Double, z:Double) = this(x,y,z,"G1")
   override def toGCode = {
     val x = p get 'x' match {
       case Some(n) => s" X$n"
@@ -91,4 +102,26 @@ case class EStop extends Command {
 
 class GetPosition extends Command {
   override def toGCode = "M114"
+}
+
+class SetDelta(p:Map[Char, Double]) extends Command {
+  val t = "M665"
+  override def toGCode = {
+    // Delta arm length
+    val l = p get 'L' match {
+      case Some(n) => s" L$n"
+      case None => ""
+    }
+    // Delta radius
+    val r = p get 'R' match {
+      case Some(n) => s" R$n"
+      case None => ""
+    }
+    // Segments per second
+    val s = p get 'S' match {
+      case Some(n) => s" S$n"
+      case None => ""
+    }
+    s"$t $l$r$s"
+  }
 }
