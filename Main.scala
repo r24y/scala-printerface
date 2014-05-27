@@ -4,31 +4,44 @@ import jssc._
 
 object Main {
   def main(args:Array[String]):Unit = {
-    val port = new SerialPort("/dev/ttyACM0")
-    port.openPort()
-    port.setEventsMask(SerialPort.MASK_RXCHAR)
-    
-    Thread.sleep(1000)
-    port.addEventListener(new SerialPortEventListener {
-      def serialEvent(ev:SerialPortEvent) = {
-        print(port.readString())
+    val printer = new SerialPrinter("/dev/ttyACM0",115200)
+    printer.on((ev:PrinterEvent[Any]) => ev.name match {
+        case "data" => print(ev.data.asInstanceOf[String])
+        case _ =>
       }
-    })
-    val printer = new SerialPrinter(port)
+    )
+    printer.connect()
 
     printer.send(Command.Home)
+    Thread.sleep(5000)
     printer.disconnect()
     println("\nDone")
   }
 }
 
-class SerialPrinter (port:SerialPort) {
-  def this(portName:String,baud:Int) = this({
-    val port = new SerialPort(portName)
+class SerialPrinter (port:SerialPort,baud:Int) {
+
+  var listeners: List[PrinterEvent[Any] => Unit] = Nil
+
+  def this(portName:String,baud:Int) = this(new SerialPort(portName),baud)
+
+  def on(l:(PrinterEvent[Any] => Unit)) = {
+    listeners ::= l
+  }
+
+  def emit(ev:PrinterEvent[Any]) = listeners foreach (l => l(ev))
+
+  def connect():Unit = {
+    port.openPort()
     port.setParams(baud,8,1,0)
-    port
-  })
-  def connect():Unit = port.openPort()
+    port.setEventsMask(SerialPort.MASK_RXCHAR)
+    port.addEventListener(new SerialPortEventListener {
+      def serialEvent(ev:SerialPortEvent) = {
+        emit(new PrinterEvent("data", port.readString()))
+      }
+    })
+    emit(new PrinterEvent("connected",true))
+  }
   def disconnect():Unit = port.closePort()
   def send(c:Command) = {
     val str = c.toGCode
@@ -36,16 +49,19 @@ class SerialPrinter (port:SerialPort) {
     println(s"Sending $str")
     port.writeBytes(cmd.getBytes)
   }
+
 }
+
+case class PrinterEvent[T](name:String, data:T)
 
 trait Command {
   def toGCode:String
 }
 
 object Command {
-  def Home = new HomeCommand
+  lazy val Home = new HomeCommand
   def Move(x:Double,y:Double,z:Double) = new Move(x,y,z)
-  def EStop = new EStop
+  lazy val EStop = new EStop
   def apply(cmd:String) = new Command {
     override def toGCode = cmd
   }
@@ -96,7 +112,7 @@ object RapidMove{
   def apply(p:Map[Char,Double]) = new Move(p, "G0")
 }
 
-case class EStop extends Command {
+class EStop extends Command {
   override def toGCode = "M112"
 }
 
