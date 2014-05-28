@@ -10,6 +10,7 @@ object Main {
         case _ =>
       }
     )
+    println("Connecting to printer")
     printer.connect()
 
     printer.send(Command.Home)
@@ -32,21 +33,26 @@ class SerialPrinter (port:SerialPort,baud:Int) {
   def emit(ev:PrinterEvent[Any]) = listeners foreach (l => l(ev))
 
   def connect():Unit = {
+    println("Opening port")
     port.openPort()
+    println("Setting params")
     port.setParams(baud,8,1,0)
     port.setEventsMask(SerialPort.MASK_RXCHAR)
+    println("Listening in")
     port.addEventListener(new SerialPortEventListener {
       def serialEvent(ev:SerialPortEvent) = {
         emit(new PrinterEvent("data", port.readString()))
       }
     })
+    Thread.sleep(5000)
+    println("Emitting 'connected' event")
     emit(new PrinterEvent("connected",true))
   }
   def disconnect():Unit = port.closePort()
   def send(c:Command) = {
     val str = c.toGCode
     val cmd = s"$str\n"
-    println(s"Sending $str")
+    //println(s"Sending $str")
     port.writeBytes(cmd.getBytes)
   }
 
